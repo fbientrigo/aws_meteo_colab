@@ -1,0 +1,7 @@
+# config/data.yaml
+local_root: data/
+colab_root: /content/aws_meteo_colab/data/
+aws_s3_bucket: s3://aws-meteo-data/
+
+# Recortes geográficos para Chile
+bbox_chile: [-75.0, -56.0, -66.0, -17.0]   # [lon_min, lat_min, lon_max, lat_max]
