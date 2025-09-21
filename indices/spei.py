@@ -204,11 +204,30 @@ def grid_series_from_nc(nc_path: str | Path,
     return pd.Series(ts.values, index=idx)
 
 def monthly_to_daily_ffill(monthly: pd.Series) -> pd.Series:
-    """Convierte serie mensual (MS) a diaria por forward-fill de cada mes."""
-    start = monthly.index.min().to_period("M").to_timestamp("MS")
-    end = monthly.index.max().to_period("M").to_timestamp("MS") + pd.offsets.MonthEnd(0)
-    daily_index = pd.date_range(start, end, freq="D")
-    return monthly.reindex(pd.date_range(start, monthly.index.max(), freq="MS")).reindex(daily_index, method="ffill")
+    """
+    Convierte una serie MENSUAL (index de fechas cualq.) a DIARIA por forward-fill.
+    - Normaliza el índice mensual al INICIO de mes.
+    - Crea un rango diario desde el primer día del primer mes al último día del último mes.
+    - Reindexa con ffill para rellenar cada día del mes con el valor mensual.
+    """
+    if not isinstance(monthly.index, pd.DatetimeIndex):
+        monthly = monthly.copy()
+        monthly.index = pd.to_datetime(monthly.index)
+
+    # Normaliza cada timestamp al INICIO de mes
+    monthly_ms_index = monthly.index.to_period('M').to_timestamp(how='start')
+    monthly_ms = pd.Series(monthly.values, index=monthly_ms_index)
+
+    # Rango diario: desde inicio del primer mes hasta FIN del último mes
+    start = monthly_ms.index.min()
+    end = monthly_ms.index.max().to_period('M').to_timestamp(how='end')
+    daily_index = pd.date_range(start, end, freq='D')
+
+    # Forward-fill por mes
+    daily = monthly_ms.reindex(daily_index, method='ffill')
+
+    # (opcional) asegura dtype float
+    return daily.astype('float32')
 
 def load_or_prepare_spei_series(
     time_scale: int,
