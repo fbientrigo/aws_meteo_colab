@@ -3,6 +3,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 from dataclasses import dataclass
+from .spei import load_or_prepare_spei_series
 
 def _rolling_sum(s: pd.Series, window_days: int) -> pd.Series:
     return s.rolling(window_days, min_periods=window_days).sum()
@@ -57,11 +58,37 @@ def compute_sti(daily_temp_c: pd.Series, window_days: int) -> pd.Series:
     Tavg = daily_temp_c.rolling(window_days, min_periods=window_days).mean()
     return _to_standard_score(Tavg.dropna()).reindex(daily_temp_c.index)
 
+
 def index_bucket(daily_prec_mm: pd.Series,
                  daily_temp_c: pd.Series,
                  cfg: IndicesConfig,
-                 lat_deg: float) -> pd.DataFrame:
+                 lat_deg: float,
+                 external_spei: bool = True,
+                 spei_timescale_months: int = 12,
+                 spei_bbox: tuple[float,float,float,float] | None = None) -> pd.DataFrame:
+    """
+    Si external_spei=True y hay spei{s} en ./data/spei/, usa esa serie (daily ffill) para SPEI.
+    Si no, calcula SPEI con Thornthwaite.
+    """
     spi = compute_spi(daily_prec_mm, cfg.spi_window_days)
-    spei = compute_spei(daily_prec_mm, daily_temp_c, lat_deg, cfg.spei_window_days)
+    # SPEI
+    if external_spei and spei_bbox is not None:
+        try:
+            res = load_or_prepare_spei_series(
+                time_scale=spei_timescale_months,
+                bbox=spei_bbox,
+                cache_dir="./data",
+                prefer_cache=True
+            )
+            spei_daily = res["daily"]
+            # Alinear índices con tus series diarias
+            spei = spei_daily.reindex(daily_prec_mm.index, method="ffill")
+        except Exception:
+            # fallback al cálculo interno
+            spei = compute_spei(daily_prec_mm, daily_temp_c, lat_deg, cfg.spei_window_days)
+    else:
+        spei = compute_spei(daily_prec_mm, daily_temp_c, lat_deg, cfg.spei_window_days)
+
     sti = compute_sti(daily_temp_c, cfg.sti_window_days)
     return pd.DataFrame({"SPI": spi, "SPEI": spei, "STI": sti})
+
