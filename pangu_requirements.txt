@@ -1,0 +1,9 @@
+onnxruntime-gpu==1.23.0
+onnx==1.16.1 
+netCDF4 
+xarray 
+dask 
+gdown 
+cdsapi 
+matplotlib
+torch
