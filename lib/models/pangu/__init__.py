@@ -1,5 +1,7 @@
 """High level helpers for running the Pangu weather pipeline."""
 
+from .get_pangu import *
+
 from .pipeline import (
     EXPECTED_SHAPE,
     LEVELS_ORDER,

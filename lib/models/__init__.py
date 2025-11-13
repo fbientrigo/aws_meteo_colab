@@ -1,1 +1,1 @@
-from pangu import *
+from .pangu import *
