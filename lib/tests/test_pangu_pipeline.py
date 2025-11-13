@@ -2,7 +2,7 @@ from datetime import datetime
 
 import numpy as np
 import pytest
-import lib.xarray.xarray as xr
+import lib.utils.xarray_functions as xr
 
 from aws_meteo_colab.pangu import (
     LEVELS_ORDER,

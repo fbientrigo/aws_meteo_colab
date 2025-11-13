@@ -8,7 +8,8 @@ import numpy as np
 import os
 import subprocess
 import sys
-import lib.xarray.xarray as xr
+import xarray as xr
+# import lib.xarray.xarray as xr
 
 
 LEVELS_ORDER: Sequence[int] = (1000, 925, 850, 700, 600, 500, 400, 300, 250, 200, 150, 100, 50)
@@ -67,7 +68,7 @@ def harmonize_era5(
     return out
 
 
-def load_era5_for_pangu(
+def load_nc_for_pangu(
     surface_nc: str,
     pl_nc: str,
     *,

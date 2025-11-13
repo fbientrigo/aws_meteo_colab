@@ -7,7 +7,7 @@ from typing import Tuple, Dict, Optional, Literal
 import numpy as np
 import pandas as pd
 import requests
-import lib.xarray.xarray as xr
+import lib.utils.xarray_functions as xr
 
 SPEI_BASE = "https://spei.csic.es/spei_database_2_11/nc"
 

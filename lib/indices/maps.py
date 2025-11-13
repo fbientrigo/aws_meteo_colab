@@ -4,7 +4,7 @@ from __future__ import annotations
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import lib.xarray.xarray as xr
+import lib.utils.xarray_functions as xr
 
 __all__ = [
     "to_2d_month_slice",
