@@ -26,39 +26,51 @@ def harmonize_era5(
     select_number: Optional[int] = 0,
     target_vertical: str = "pressure_level",
 ) -> xr.Dataset:
-    """Normalize ERA5 datasets to match the grid expected by Pangu."""
     out = ds
     rename: Dict[str, str] = {}
+
     if "valid_time" in out.coords and "time" not in out.coords:
         rename["valid_time"] = "time"
     if "forecast_time" in out.coords and "time" not in out.coords:
         rename["forecast_time"] = "time"
     if rename:
         out = out.rename(rename)
+        rename = {}
 
     if is_pl:
+        # Normalizar el nombre de la coordenada vertical
         if target_vertical not in out.coords:
             if "pressure_level" in out.coords:
-                out = out.rename({"pressure_level": target_vertical})
+                rename["pressure_level"] = target_vertical
             elif "level" in out.coords:
-                out = out.rename({"level": target_vertical})
+                rename["level"] = target_vertical
+            elif "isobaricInhPa" in out.coords:
+                # Caso típico de ECMWF / cfgrib
+                rename["isobaricInhPa"] = target_vertical
 
+        if rename:
+            out = out.rename(rename)
+
+    # expver / number
     if "expver" in out.sizes and select_expver is not None:
         out = out.isel(expver=select_expver).drop_vars("expver", errors="ignore")
     if "number" in out.sizes and select_number is not None:
         out = out.isel(number=select_number).drop_vars("number", errors="ignore")
 
+    # lat descendente
     if "latitude" in out.coords:
         lat = out.latitude
         if float(lat[0]) < float(lat[-1]):
             out = out.reindex(latitude=lat[::-1])
 
+    # lon en [0, 360)
     if "longitude" in out.coords:
         lon = out.longitude
         if float(lon.min()) < 0:
             out = out.assign_coords(longitude=(lon % 360))
         out = out.sortby("longitude")
 
+    # chequeo de malla
     if enforce_shape and all(k in out.coords for k in ("latitude", "longitude")):
         if (out.sizes["latitude"], out.sizes["longitude"]) != tuple(expected):
             raise ValueError(
@@ -348,7 +360,7 @@ __all__ = [
     "LEVELS_ORDER",
     "EXPECTED_SHAPE",
     "harmonize_era5",
-    "load_era5_for_pangu",
+    "load_nc_for_pangu",
     "make_pangu_inputs",
     "run_pangu_once",
     "compute_step_metrics",
