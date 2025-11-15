@@ -1,11 +1,21 @@
-fsspec==2025.3.0
-gcsfs==2025.3.0
-datasets==4.0.0
+fsspec
+gcsfs
+datasets
 torch>=2.1
-transformers>=4.44
+transformers
 xarray
 rasterio
 satpy
 numpy
 matplotlib
+onnxruntime-gpu==1.23.0
+onnx==1.16.1
+netCDF4
+xarray
+dask
+gdown
+cdsapi
+ecmwf-opendata
+pygrib
+cfgrib
 
