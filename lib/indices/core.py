@@ -5,6 +5,18 @@ import pandas as pd
 from dataclasses import dataclass
 from .spei import load_or_prepare_spei_series
 
+def _to_lon_0_360(ds: xr.Dataset) -> xr.Dataset:
+    if float(ds.longitude.min()) < 0.0:
+        ds = ds.assign_coords(longitude=(ds.longitude % 360)).sortby('longitude')
+    return ds
+
+def _lat_slice(ds: xr.Dataset, lat_min: float, lat_max: float):
+    lat = ds['latitude'].values
+    if lat[0] > lat[-1]:
+        return slice(lat_max, lat_min)  # 90 -> -90
+    else:
+        return slice(lat_min, lat_max)
+
 def _rolling_sum(s: pd.Series, window_days: int) -> pd.Series:
     return s.rolling(window_days, min_periods=window_days).sum()
 
@@ -14,6 +26,16 @@ def _to_standard_score(x: pd.Series) -> pd.Series:
     ranks = x.rank(method="average", pct=True)
     eps = 1e-6
     return pd.Series(norm.ppf(np.clip(ranks, eps, 1-eps)), index=x.index)
+
+def subset_box(da: xr.DataArray, bbox=(-56.0, -17.0, 285.0, 294.0)) -> xr.DataArray:
+    lat_min, lat_max, lon_min, lon_max = bbox
+    ds = da.to_dataset(name="var")
+    ds = _to_lon_0_360(ds)
+    ds = ds.sel(latitude=_lat_slice(ds, lat_min, lat_max))
+    ds = ds.sel(longitude=ds.longitude.where(
+        (ds.longitude >= lon_min) & (ds.longitude <= lon_max), drop=True))
+    return ds["var"]
+
 
 @dataclass
 class IndicesConfig:
@@ -57,6 +79,31 @@ def compute_spei(daily_prec_mm: pd.Series,
 def compute_sti(daily_temp_c: pd.Series, window_days: int) -> pd.Series:
     Tavg = daily_temp_c.rolling(window_days, min_periods=window_days).mean()
     return _to_standard_score(Tavg.dropna()).reindex(daily_temp_c.index)
+
+# if clim its already calculated use it
+# can be saved in a bucket file and easily loaded
+import xarray as xr
+def compute_sti_from_clim(
+    ds_pred: xr.Dataset,
+    clim: xr.Dataset,
+    var: str = "t2m",
+    time_dim: str = "valid_time"
+) -> xr.DataArray:
+    """
+    STI(time, lat, lon) = (t2m - mu_month) / sigma_month
+    - ds_pred: t2m[K] con dimensión temporal 'valid_time'
+    - clim: datasets con t2m_mean, t2m_std indexados por 'month' (1..12)
+    """
+    assert var in ds_pred, f"'{var}' no está en ds_pred."
+    da = ds_pred[var]
+    if time_dim not in da.dims:
+        raise ValueError(f"Dimensión temporal esperada '{time_dim}' no encontrada en {da.dims}")
+    months = xr.DataArray(da[time_dim].dt.month, coords={time_dim: da[time_dim]}, dims=[time_dim])
+    mu = clim["t2m_mean"].sel(month=months)
+    sig = xr.where(clim["t2m_std"].sel(month=months) < 1e-6, 1e-6, clim["t2m_std"].sel(month=months))
+    sti = (da - mu) / sig
+    sti.name = "sti"
+    return sti
 
 
 def index_bucket(daily_prec_mm: pd.Series,
