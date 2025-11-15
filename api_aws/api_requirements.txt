@@ -1,0 +1,6 @@
+fastapi
+uvicorn[standard]
+boto3
+s3fs
+xarray
+numpy
