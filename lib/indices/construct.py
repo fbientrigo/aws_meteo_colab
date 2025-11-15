@@ -53,7 +53,7 @@ def _normalize_coords(ds: xr.Dataset) -> xr.Dataset:
 
 # lib/indices/construct.py
 # Update2
-from __future__ import annotations
+
 import os
 import pathlib
 from typing import List, Optional, Tuple
