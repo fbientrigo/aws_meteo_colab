@@ -4,3 +4,4 @@ boto3
 s3fs
 xarray
 numpy
+netCDF4 

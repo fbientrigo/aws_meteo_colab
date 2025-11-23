@@ -11,7 +11,7 @@ echo "=== 1. Actualizando paquetes del sistema ==="
 sudo apt update && sudo apt upgrade -y
 
 echo "=== 2. Instalando dependencias del sistema ==="
-sudo apt install -y git python3 python3-venv python3-pip
+sudo apt install -y git python3 python3-venv python3-pip tmux
 
 echo "=== 3. Creando entorno virtual .venv si no existe ==="
 if [ ! -d ".venv" ]; then
