@@ -13,7 +13,24 @@ source .venv/bin/activate
 pip install --upgrade pip
 ```
 
+El proyecto se puede clonar
+```bash
+mkdir aws_meteo_colab
+git clone https://github.com/fbientrigo/aws_meteo_colab.git aws_meteo_colab
+```
+
 Luego partimos con el modelo
 ```bash
 uvicorn main:app --host 0.0.0.0 --port 8000
 ```
+
+
+# Datasets
+
+
+- 251115 (crudo, real ECMWF)
+    - steps: +24hrs (+6hrs, +1hrs)
+        -  indices:
+            - STI
+            - SEPI
+            
