@@ -1,24 +1,60 @@
 # s3_helpers.py
-from typing import List
+from __future__ import annotations
+
+from typing import List, Set
 import re
+import logging
 
 import boto3
+import fsspec
 import xarray as xr
 
+logger = logging.getLogger(__name__)
+
+# Configuración básica de S3 / índice
 BUCKET = "pangu-mvp-data"
 BASE_PREFIX = "indices/sti/"
 INDEX_NAME = "sti"
 REGION_NAME = "chile"  # usado en el nombre del archivo
 
+# Clientes globales (se comparten entre llamadas)
 s3_client = boto3.client("s3")
+s3_fs = fsspec.filesystem("s3")  # usa IAM role de la instancia
 
 
+# --------------------------------------------------------------------
+# Helpers internos
+# --------------------------------------------------------------------
+def _normalize_step(step: str | int) -> str:
+    """
+    Normaliza el step a 3 dígitos (e.g. 48 -> '048').
+    """
+    return f"{int(step):03d}"
+
+
+def _object_exists(key: str) -> bool:
+    """
+    Verifica existencia de un objeto en S3 usando s3fs.
+    Espera un path tipo 'bucket/key'.
+    """
+    path = f"{BUCKET}/{key}"
+    try:
+        return s3_fs.exists(path)
+    except Exception as exc:  # fallo raro de red / IAM
+        logger.error("Error verificando existencia en S3 para %s: %s", path, exc)
+        return False
+
+
+# --------------------------------------------------------------------
+# API pública para listar runs / steps
+# --------------------------------------------------------------------
 def list_runs() -> List[str]:
     """
     Lista los 'run=YYYYMMDDHH' disponibles bajo indices/sti/.
+    Se basa en las keys reales del bucket.
     """
     paginator = s3_client.get_paginator("list_objects_v2")
-    runs = set()
+    runs: Set[str] = set()
 
     for page in paginator.paginate(Bucket=BUCKET, Prefix=BASE_PREFIX):
         for obj in page.get("Contents", []):
@@ -33,10 +69,11 @@ def list_runs() -> List[str]:
 def list_steps(run: str) -> List[str]:
     """
     Lista los 'step=XXX' disponibles para un run dado.
+    Devuelve siempre steps normalizados a 3 dígitos (e.g. '048').
     """
     prefix = f"{BASE_PREFIX}run={run}/"
     paginator = s3_client.get_paginator("list_objects_v2")
-    steps = set()
+    steps: Set[str] = set()
 
     for page in paginator.paginate(Bucket=BUCKET, Prefix=prefix):
         for obj in page.get("Contents", []):
@@ -48,29 +85,61 @@ def list_steps(run: str) -> List[str]:
     return sorted(steps)
 
 
-def build_nc_key(run: str, step: str) -> str:
+# --------------------------------------------------------------------
+# Construcción de rutas
+# --------------------------------------------------------------------
+def build_nc_key(run: str, step: str | int) -> str:
     """
-    Construye el key del NetCDF, según convención:
+    Construye el key del NetCDF, según convención real en S3:
+
     indices/sti/run=YYYYMMDDHH/step=XXX/sti_chile_run=YYYYMMDDHH_step=XXX.nc
+                                    ^                         ^
+                                 step=048                step=048
     """
-    filename = f"{INDEX_NAME}_{REGION_NAME}_run={run}_step={step}.nc"
-    key = f"{BASE_PREFIX}run={run}/step={step}/{filename}"
+    step_str = _normalize_step(step)
+    filename = f"{INDEX_NAME}_{REGION_NAME}_run={run}_step={step_str}.nc"
+    key = f"{BASE_PREFIX}run={run}/step={step_str}/{filename}"
     return key
 
 
-def build_nc_s3_uri(run: str, step: str) -> str:
+def build_nc_s3_uri(run: str, step: str | int) -> str:
     """
-    Ruta 's3://bucket/...' para xarray.
+    Construye la URI tipo 's3://bucket/...' para uso informativo o logging.
     """
     key = build_nc_key(run, step)
     return f"s3://{BUCKET}/{key}"
 
 
-def load_dataset(run: str, step: str) -> xr.Dataset:
+# --------------------------------------------------------------------
+# Carga de Dataset
+# --------------------------------------------------------------------
+def load_dataset(run: str, step: str | int) -> xr.Dataset:
     """
-    Abre el Dataset directamente desde S3 usando s3fs a través de xarray.
+    Abre el Dataset directamente desde S3 usando fsspec + h5netcdf,
+    sin descargar a disco.
+
+    Lanza FileNotFoundError si el objeto no existe.
+    Puede lanzar OSError / ValueError si el NetCDF está corrupto.
     """
-    uri = build_nc_s3_uri(run, step)
-    # xarray detecta 's3://' y usa s3fs. El rol IAM provee credenciales.
-    ds = xr.open_dataset(uri)
+    key = build_nc_key(run, step)
+    s3_uri = build_nc_s3_uri(run, step)
+
+    logger.info("Abriendo NetCDF desde S3: %s", s3_uri)
+
+    if not _object_exists(key):
+        logger.warning("NetCDF no encontrado en S3 para run=%s, step=%s", run, step)
+        raise FileNotFoundError(f"Objeto no encontrado en S3: {s3_uri}")
+
+    # Path para s3fs: 'bucket/key'
+    path = f"{BUCKET}/{key}"
+
+    try:
+        # Abrimos el objeto remoto como archivo binario
+        with s3_fs.open(path, mode="rb") as f:
+            ds = xr.open_dataset(f, engine="h5netcdf")
+    except Exception as exc:
+        logger.error("Error leyendo NetCDF desde %s: %s", s3_uri, exc)
+        # Relevamos la excepción para que la capa FastAPI la traduzca a HTTP 500
+        raise
+
     return ds

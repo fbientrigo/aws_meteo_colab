@@ -1,7 +1,9 @@
 fastapi
 uvicorn[standard]
 boto3
-s3fs
 xarray
+boto3
+fsspec
+s3fs
+h5netcdf
 numpy
-netCDF4 
