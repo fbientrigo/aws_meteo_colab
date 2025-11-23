@@ -130,16 +130,17 @@ def load_dataset(run: str, step: str | int) -> xr.Dataset:
         logger.warning("NetCDF no encontrado en S3 para run=%s, step=%s", run, step)
         raise FileNotFoundError(f"Objeto no encontrado en S3: {s3_uri}")
 
-    # Path para s3fs: 'bucket/key'
     path = f"{BUCKET}/{key}"
 
+    # NO usamos 'with': dejamos el file abierto y confiamos en ds.close() más arriba
+    f = s3_fs.open(path, mode="rb")
     try:
-        # Abrimos el objeto remoto como archivo binario
-        with s3_fs.open(path, mode="rb") as f:
-            ds = xr.open_dataset(f, engine="h5netcdf")
+        ds = xr.open_dataset(f, engine="h5netcdf")
     except Exception as exc:
+        # Si falla al abrir, cerramos el file para no dejarlo colgando
+        f.close()
         logger.error("Error leyendo NetCDF desde %s: %s", s3_uri, exc)
-        # Relevamos la excepción para que la capa FastAPI la traduzca a HTTP 500
         raise
 
     return ds
+
