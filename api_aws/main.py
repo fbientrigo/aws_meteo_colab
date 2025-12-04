@@ -7,12 +7,15 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import JSONResponse
 
 from s3_helpers import list_runs, list_steps, load_dataset
+from api_aws.routers import forecast
 
 app = FastAPI(
     title="Pangu MVP STI API",
     description="API para servir índices STI desde NetCDF en S3",
     version="0.1.0",
 )
+
+app.include_router(forecast.router)
 
 
 # --------------------------------------------------------------------
