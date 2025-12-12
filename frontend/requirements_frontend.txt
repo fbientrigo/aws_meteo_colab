@@ -1,6 +1,0 @@
-streamlit
-pandas
-requests
-pydeck
-xarray
-h5netcdf

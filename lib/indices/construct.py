@@ -35,7 +35,7 @@ def cds_retrieve_monthly_t2m_years(outfile: str, years: list[str], months: list[
         "time": "00:00",
         "area": AREA_CHILE,  # [North, West, South, East] con longitudes −180..180
     }
-    print(f"[CDS] Solicitando {len(years)} años × {len(months)} meses → {outfile}")
+    print(f"[CDS] Solicitando {len(years)} years x {len(months)} months -> {outfile}")
     c.retrieve("reanalysis-era5-single-levels-monthly-means", req, outfile)
     print(f"[OK] Guardado: {outfile}")
 
@@ -180,7 +180,7 @@ def build_era5_t2m_monthly_chile(
 
     ds_all.to_netcdf(out_all, encoding=encoding)
     print(f"[OK] Ensamblado final: {out_all}  |  tiempo: "
-          f"{ds_all.time.min().values} → {ds_all.time.max().values}")
+          f"{ds_all.time.min().values} -> {ds_all.time.max().values}")
 
     return ds_all
 
