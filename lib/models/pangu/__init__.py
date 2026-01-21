@@ -1,6 +1,7 @@
 """High level helpers for running the Pangu weather pipeline."""
 
 from .get_pangu import *
+from .inference import *
 
 from .pipeline import (
     EXPECTED_SHAPE,
@@ -15,6 +16,7 @@ from .pipeline import (
     make_pangu_inputs,
     rmse,
     run_pangu_once,
+    convert_np_to_xa
 )
 
 __all__ = [

@@ -107,48 +107,47 @@ def load_nc_for_pangu(
     return ds_sfc, ds_pl
 
 
-def make_pangu_inputs(
-    ds_sfc: xr.Dataset,
-    ds_pl: xr.Dataset,
-    *,
-    out_surface: str = "input_data/input_surface.npy",
-    out_upper: str = "input_data/input_upper.npy",
-    expected_shape: Tuple[int, int] = EXPECTED_SHAPE,
-) -> Tuple[np.ndarray, np.ndarray]:
-    """Create the input tensors expected by Pangu and persist them as ``.npy`` files."""
-    sfc_vars = ["msl", "u10", "v10", "t2m"]
-    up_vars = ["z", "q", "t", "u", "v"]
-
-    missing_sfc = [var for var in sfc_vars if var not in ds_sfc]
-    missing_up = [var for var in up_vars if var not in ds_pl]
-    if missing_sfc or missing_up:
-        raise KeyError(
-            f"Variables faltantes: superficie={missing_sfc} altura={missing_up}"
-        )
-
-    sfc_list = [ds_sfc[var].values for var in sfc_vars]
+LEVELS_ORDER: Sequence[int] = (1000, 925, 850, 700, 600, 500, 400, 300, 250, 200, 150, 100, 50)
+EXPECTED_SHAPE: Tuple[int, int] = (721, 1440)
+def make_pangu_inputs(ds_sfc: xr.Dataset, ds_pl: xr.Dataset,
+                      out_surface="input_data/input_surface.npy",
+                      out_upper="input_data/input_upper.npy"):
+    # SUPERFICIE: [MSLP, U10, V10, T2M]
+    sfc_list = [
+        ds_sfc["msl"].values,  # Pa
+        ds_sfc["u10"].values,  # m/s
+        ds_sfc["v10"].values,  # m/s
+        ds_sfc["t2m"].values,  # K
+    ]
     arr_sfc = np.stack(sfc_list, axis=0).astype("float32")
     if arr_sfc.ndim == 4 and arr_sfc.shape[1] == 1:
         arr_sfc = arr_sfc.squeeze(axis=1)
 
-    up_list = [ds_pl[var].values for var in up_vars]
+
+    # ALTURA: [Z, Q, T, U, V] con 13 niveles
+    up_list = [
+        ds_pl["gh"].values,  # m^2/s^2
+        ds_pl["q"].values,  # kg/kg
+        ds_pl["t"].values,  # K
+        ds_pl["u"].values,  # m/s
+        ds_pl["v"].values,  # m/s
+    ]
     arr_up = np.stack(up_list, axis=0).astype("float32")
     if arr_up.ndim == 5 and arr_up.shape[1] == 1:
         arr_up = arr_up.squeeze(axis=1)
 
-    if arr_sfc.shape[0] != 4 or arr_sfc.shape[-2:] != tuple(expected_shape):
-        raise ValueError(f"surface {arr_sfc.shape}")
-    if arr_up.shape[0] != 5 or arr_up.shape[1] != len(LEVELS_ORDER) or arr_up.shape[-2:] != tuple(expected_shape):
-        raise ValueError(f"upper {arr_up.shape}")
 
+    # Validaciones
+    assert arr_sfc.shape == (4, *EXPECTED_SHAPE), f"surface {arr_sfc.shape}"
+    assert arr_up.shape  == (5, 13, *EXPECTED_SHAPE), f"upper {arr_up.shape}"
     if np.isnan(arr_sfc).any() or np.isnan(arr_up).any():
+        print("[WARN] NaNs detectados; reemplazo por 0.")
         arr_sfc = np.nan_to_num(arr_sfc, nan=0.0)
-        arr_up = np.nan_to_num(arr_up, nan=0.0)
+        arr_up  = np.nan_to_num(arr_up,  nan=0.0)
 
-    os.makedirs(os.path.dirname(out_surface) or ".", exist_ok=True)
-    os.makedirs(os.path.dirname(out_upper) or ".", exist_ok=True)
-    np.save(out_surface, arr_sfc)
-    np.save(out_upper, arr_up)
+    os.makedirs("input_data", exist_ok=True)
+    np.save(out_surface, arr_sfc); np.save(out_upper, arr_up)
+    print("[OK] Guardados:", out_surface, "|", out_upper)
     return arr_sfc, arr_up
 
 
@@ -354,6 +353,64 @@ def iterative_rollout(
         "times": np.array(times),
         "metrics": metrics_arrays,
     }
+
+
+def convert_np_to_xa(
+    pred_sfc: np.ndarray,
+    pred_up: np.ndarray,
+    valid_time: Union[str, np.datetime64, datetime],
+    lat: np.ndarray,
+    lon: np.ndarray
+) -> tuple[xr.Dataset, xr.Dataset]:
+    """
+    Convierte los arrays numpy de salida de Pangu en Datasets de xarray con metadatos.
+
+    Args:
+        pred_sfc: Array (4, lat, lon)
+        pred_up: Array (5, 13, lat, lon)
+        valid_time: Fecha/hora de validez de la predicción.
+        lat: Array de latitudes.
+        lon: Array de longitudes.
+    """
+
+    LEVELS_ORDER = [1000, 925, 850, 700, 600, 500, 400, 300, 250, 200, 150, 100, 50]
+
+    # Crear Dataset de Superficie
+    ds_pred_sfc = xr.Dataset(
+        data_vars=dict(
+            msl=(("latitude", "longitude"), pred_sfc[0]),
+            u10=(("latitude", "longitude"), pred_sfc[1]),
+            v10=(("latitude", "longitude"), pred_sfc[2]),
+            t2m=(("latitude", "longitude"), pred_sfc[3]),
+        ),
+        coords=dict(latitude=lat, longitude=lon),
+    )
+
+    # Crear Dataset de Niveles Superiores
+    ds_pred_up = xr.Dataset(
+        data_vars=dict(
+            gh=(("level", "latitude", "longitude"), pred_up[0]),
+            q =(("level", "latitude", "longitude"), pred_up[1]),
+            t =(("level", "latitude", "longitude"), pred_up[2]),
+            u =(("level", "latitude", "longitude"), pred_up[3]),
+            v =(("level", "latitude", "longitude"), pred_up[4]),
+        ),
+        coords=dict(level=LEVELS_ORDER, latitude=lat, longitude=lon),
+    )
+
+    # Manejo del tiempo
+    if valid_time is None:
+        raise ValueError("Debes pasar valid_time (fecha y hora de la predicción).")
+
+    valid_time_dt64 = np.datetime64(valid_time)
+
+    # Expandir dimensión tiempo
+    ds_pred_sfc = ds_pred_sfc.expand_dims(time=[valid_time_dt64])
+    ds_pred_up  = ds_pred_up.expand_dims(time=[valid_time_dt64])
+
+    return ds_pred_sfc, ds_pred_up
+
+
 
 
 __all__ = [
